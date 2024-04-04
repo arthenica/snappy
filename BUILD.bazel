@@ -26,21 +26,11 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
-load("@bazel_skylib//rules:write_file.bzl", "write_file")
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("@rules_cc//cc:cc_test.bzl", "cc_test")
-
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-exports_files([
-    "COPYING",
-    "COPYING.notestdata",
-])
-
-SNAPPY_VERSION = (1, 2, 2)
+SNAPPY_VERSION = (1, 1, 10)
 
 config_setting(
     name = "windows",
@@ -50,7 +40,7 @@ config_setting(
 cc_library(
     name = "config",
     hdrs = ["config.h"],
-    defines = ["HAVE_CONFIG_H"],
+    defines = ["HAVE_CONFIG_H"]
 )
 
 cc_library(
@@ -62,10 +52,8 @@ cc_library(
     name = "snappy-stubs-internal",
     srcs = ["snappy-stubs-internal.cc"],
     hdrs = ["snappy-stubs-internal.h"],
-    implementation_deps = [
-        ":config",
-    ],
     deps = [
+        ":config",
         ":snappy-stubs-public",
     ],
 )
@@ -82,15 +70,12 @@ cc_library(
         "snappy-sinksource.h",
     ],
     copts = select({
-        ":windows": [],
-        "//conditions:default": [
-            "-Wno-sign-compare",
-        ],
-    }),
-    implementation_deps = [
-        ":config",
-    ],
+      ":windows": [],
+      "//conditions:default": [
+        "-Wno-sign-compare",
+    ]}),
     deps = [
+        ":config",
         ":snappy-stubs-internal",
         ":snappy-stubs-public",
     ],
@@ -129,7 +114,7 @@ cc_test(
     deps = [
         ":snappy",
         ":snappy-test",
-        "@com_google_benchmark//:benchmark_main",
+        "//third_party/benchmark:benchmark_main",
     ],
 )
 
@@ -142,15 +127,15 @@ cc_test(
     deps = [
         ":snappy",
         ":snappy-test",
-        "@com_google_googletest//:gtest_main",
+        "//third_party/googletest:gtest_main",
     ],
 )
 
 # Generate a config.h similar to what cmake would produce.
-write_file(
+genrule(
     name = "config_h",
-    out = "config.h",
-    content = """\
+    outs = ["config.h"],
+    cmd = """cat <<EOF >$@
 #define HAVE_STDDEF_H 1
 #define HAVE_STDINT_H 1
 #ifdef __has_builtin
@@ -207,17 +192,19 @@ write_file(
 #    define SNAPPY_IS_BIG_ENDIAN 1
 #  endif
 #endif
-""".splitlines(),
+EOF
+""",
 )
 
-expand_template(
+genrule(
     name = "snappy_stubs_public_h",
-    out = "snappy-stubs-public.h",
-    substitutions = {
-        "${HAVE_SYS_UIO_H_01}": "!_WIN32",
-        "${PROJECT_VERSION_MAJOR}": str(SNAPPY_VERSION[0]),
-        "${PROJECT_VERSION_MINOR}": str(SNAPPY_VERSION[1]),
-        "${PROJECT_VERSION_PATCH}": str(SNAPPY_VERSION[2]),
-    },
-    template = "snappy-stubs-public.h.in",
+    srcs = ["snappy-stubs-public.h.in"],
+    outs = ["snappy-stubs-public.h"],
+    # Assume sys/uio.h is available on non-Windows.
+    # Set the version numbers.
+    cmd = ("""sed -e 's/$${HAVE_SYS_UIO_H_01}/!_WIN32/g' \
+           -e 's/$${PROJECT_VERSION_MAJOR}/%d/g' \
+           -e 's/$${PROJECT_VERSION_MINOR}/%d/g' \
+           -e 's/$${PROJECT_VERSION_PATCH}/%d/g' \
+    $< >$@""" % SNAPPY_VERSION),
 )
