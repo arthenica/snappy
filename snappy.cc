@@ -1792,7 +1792,7 @@ bool GetUncompressedLength(Source* source, uint32_t* result) {
 
 size_t Compress(Source* reader, Sink* writer, CompressionOptions options) {
   assert(options.level == 1 || options.level == 2);
-  int snappy_token = 0;
+  int token = 0;
   size_t written = 0;
   size_t N = reader->Available();
   const size_t uncompressed_size = N;
@@ -1848,21 +1848,22 @@ size_t Compress(Source* reader, Sink* writer, CompressionOptions options) {
     // have room for us directly.
     char* dest = writer->GetAppendBuffer(max_output, wmem.GetScratchOutput());
     char* end = nullptr;
-      if (options.level == 1) {
-        end = internal::CompressFragment(fragment, fragment_size, dest, table,
-                                         table_size);
-      } else if (options.level == 2) {
-        end = internal::CompressFragmentDoubleHash(
-            fragment, fragment_size, dest, table, table_size >> 1,
-            table + (table_size >> 1), table_size >> 1);
-      }
-
+    if (options.level == 1) {
+      end = internal::CompressFragment(fragment, fragment_size, dest, table,
+                                       table_size);
+    } else if (options.level == 2) {
+      end = internal::CompressFragmentDoubleHash(
+          fragment, fragment_size, dest, table, table_size >> 1,
+          table + (table_size >> 1), table_size >> 1);
+    }
     writer->Append(dest, end - dest);
     written += (end - dest);
 
     N -= num_to_read;
     reader->Skip(pending_advance);
   }
+
+  Report(token, "snappy_compress", written, uncompressed_size);
   return written;
 }
 
