@@ -1344,11 +1344,11 @@ inline size_t AdvanceToNextTagX86Optimized(const uint8_t** ip_p, size_t* tag) {
 
 // Extract the offset for copy-1 and copy-2 returns 0 for literals or copy-4.
 inline uint32_t ExtractOffset(uint32_t val, size_t tag_type) {
-  // For x86 non-static storage works better. For ARM static storage is better.
+  // For Arm non-static storage works better. For x86 static storage is better.
   // TODO: Once the array is recognized as a register, improve the
   // readability for x86.
 #if defined(__x86_64__)
-  constexpr uint64_t kExtractMasksCombined = 0x0000FFFF00FF0000ull;
+  static constexpr uint64_t kExtractMasksCombined = 0x0000FFFF00FF0000ull;
   uint16_t result;
   memcpy(&result,
          reinterpret_cast<const char*>(&kExtractMasksCombined) + 2 * tag_type,
