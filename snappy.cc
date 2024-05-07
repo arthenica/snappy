@@ -1775,13 +1775,12 @@ static bool InternalUncompressAllTags(SnappyDecompressor* decompressor,
                                       Writer* writer, uint32_t compressed_len,
                                       uint32_t uncompressed_len) {
     int token = 0;
-  Report(token, "snappy_uncompress", compressed_len, uncompressed_len);
-
   writer->SetExpectedLength(uncompressed_len);
 
   // Process the entire input
   decompressor->DecompressAllTags(writer);
   writer->Flush();
+  Report(token, "snappy_uncompress", compressed_len, uncompressed_len);
   return (decompressor->eof() && writer->CheckLength());
 }
 
