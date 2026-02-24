@@ -30,6 +30,8 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
+exports_files(["COPYING"])
+
 SNAPPY_VERSION = (1, 2, 2)
 
 config_setting(
