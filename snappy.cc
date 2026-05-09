@@ -1856,11 +1856,9 @@ size_t Compress(Source* reader, Sink* writer) {
 
 size_t Compress(Source* reader, Sink* writer, CompressionOptions options) {
   assert(options.level == 1 || options.level == 2);
-  int snappy_token = 0;
   size_t written = 0;
   size_t N = reader->Available();
   assert(N <= 0xFFFFFFFFu);
-  const size_t uncompressed_size = N;
   char ulength[Varint::kMax32];
   char* p = Varint::Encode32(ulength, N);
   writer->Append(ulength, p - ulength);
