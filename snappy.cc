@@ -1375,7 +1375,13 @@ inline uint32_t ExtractOffset(uint32_t val, size_t tag_type) {
          reinterpret_cast<const char*>(&kExtractMasksCombined) + 2 * tag_type,
          sizeof(result));
   return val & result;
-#elif defined(__aarch64__)
+  // For AArch64 and RISC-V, use a bit-twiddling trick to extract the mask from a
+  // single combined constant instead of a lookup table. The constant packs multiple
+  // 16-bit masks based on tag_type (see implementation below). The code calculates
+  // the shift amount from tag_type, right-shifts the constant to move the desired
+  // mask to the LSB position, then extracts it with & 0xFFFF. This branchless
+  // approach is often more performant on modern CPUs.
+#elif defined(__aarch64__) || (defined(__riscv) && (__riscv_xlen == 64))
   constexpr uint64_t kExtractMasksCombined = 0x0000FFFF00FF0000ull;
   return val & static_cast<uint32_t>(
       (kExtractMasksCombined >> (tag_type * 16)) & 0xFFFF);
