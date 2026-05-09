@@ -65,7 +65,7 @@ void BM_UFlat(benchmark::State& state) {
 
   std::string zcontents;
   snappy::Compress(contents.data(), contents.size(), &zcontents,
-                   snappy::CompressionOptions{.level = state.range(1)});
+                   snappy::CompressionOptions{/*level=*/state.range(1)});
   char* dst = new char[contents.size()];
 
   for (auto s : state) {
@@ -130,7 +130,7 @@ void BM_UValidate(benchmark::State& state) {
 
   std::string zcontents;
   snappy::Compress(contents.data(), contents.size(), &zcontents,
-                   snappy::CompressionOptions{.level = state.range(1)});
+                   snappy::CompressionOptions{/*level=*/state.range(1)});
 
   for (auto s : state) {
     CHECK(snappy::IsValidCompressedBuffer(zcontents.data(), zcontents.size()));
@@ -193,7 +193,7 @@ void BM_UIOVecSource(benchmark::State& state) {
   size_t zsize = 0;
   for (auto s : state) {
     snappy::RawCompressFromIOVec(iov, contents.size(), dst, &zsize,
-                                 snappy::CompressionOptions{.level = level});
+                                 snappy::CompressionOptions{/*level=*/level});
     benchmark::DoNotOptimize(iov);
   }
   state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) *
@@ -268,7 +268,7 @@ void BM_UFlatSink(benchmark::State& state) {
 
   std::string zcontents;
   snappy::Compress(contents.data(), contents.size(), &zcontents,
-                   snappy::CompressionOptions{.level = state.range(1)});
+                   snappy::CompressionOptions{/*level=*/state.range(1)});
   char* dst = new char[contents.size()];
 
   for (auto s : state) {
@@ -304,7 +304,7 @@ void BM_ZFlat(benchmark::State& state) {
   size_t zsize = 0;
   for (auto s : state) {
     snappy::RawCompress(contents.data(), contents.size(), dst, &zsize,
-                        snappy::CompressionOptions{.level = level});
+                        snappy::CompressionOptions{/*level=*/level});
     benchmark::DoNotOptimize(dst);
   }
   state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) *
@@ -340,7 +340,7 @@ void BM_ZFlatAll(benchmark::State& state) {
   for (auto s : state) {
     for (int i = 0; i < num_files; ++i) {
       snappy::RawCompress(contents[i].data(), contents[i].size(), dst[i],
-                          &zsize, snappy::CompressionOptions{.level = level});
+                          &zsize, snappy::CompressionOptions{/*level=*/level});
       benchmark::DoNotOptimize(dst);
     }
   }
@@ -377,7 +377,7 @@ void BM_ZFlatIncreasingTableSize(benchmark::State& state) {
   for (auto s : state) {
     for (size_t i = 0; i < contents.size(); ++i) {
       snappy::RawCompress(contents[i].data(), contents[i].size(), dst[i],
-                          &zsize, snappy::CompressionOptions{.level = level});
+                          &zsize, snappy::CompressionOptions{/*level=*/level});
       benchmark::DoNotOptimize(dst);
     }
   }

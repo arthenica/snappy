@@ -1364,6 +1364,32 @@ inline size_t AdvanceToNextTagX86Optimized(const uint8_t** ip_p, size_t* tag) {
   return tag_type;
 }
 
+SNAPPY_ATTRIBUTE_ALWAYS_INLINE
+inline size_t AdvanceToNextTagRVOptimized(const uint8_t** ip_p, size_t* tag) {
+  const uint8_t*& ip = *ip_p;
+  // This section is crucial for the throughput of the decompression loop.
+  // The latency of an iteration is fundamentally constrained by the data chain on ip:
+  // ip -> c = *tag -> literal_len = c >> 2, tag_type = c & 3
+  //      -> literal_advance = literal_len + 2, copy_advance = tag_type + 1
+  //      -> next_ip = ip + literal_advance  OR  ip + copy_advance (literal vs copy)
+  //      -> *tag = byte at (next_ip - 1); ip = next_ip
+  //
+  // Base RISC-V has no x86-style cmov and no AArch64 csinc on the same shape; this
+  // computes both candidate advances and both load offsets, then selects with
+  // (is_literal ? ... : ...). With the Zicond extension (czero.eqz / czero.nez), those
+  // selections typically lower to branchless conditional-zero ops instead of a
+  // hard-to-predict literal/copy branch, which is why this form tends to win there.
+  const size_t literal_len = *tag >> 2;
+  const size_t tag_type = *tag & 3;
+  const bool is_literal = (tag_type == 0);
+  const size_t copy_advance = tag_type + 1;
+  const size_t literal_advance = literal_len + 2;
+  const uint8_t* next_ip = is_literal ? (ip + literal_advance) : (ip + copy_advance);
+  *tag = is_literal ? ip[literal_advance - 1] : ip[copy_advance - 1];
+  ip = next_ip;
+  return tag_type;
+}
+
 // Extract the offset for copy-1 and copy-2 returns 0 for literals or copy-4.
 inline uint32_t ExtractOffset(uint32_t val, size_t tag_type) {
   // For Arm non-static storage works better. For x86 static storage is better.
@@ -1376,7 +1402,13 @@ inline uint32_t ExtractOffset(uint32_t val, size_t tag_type) {
          reinterpret_cast<const char*>(&kExtractMasksCombined) + 2 * tag_type,
          sizeof(result));
   return val & result;
-#elif defined(__aarch64__)
+  // For AArch64 and RISC-V, use a bit-twiddling trick to extract the mask from a
+  // single combined constant instead of a lookup table. The constant packs multiple
+  // 16-bit masks based on tag_type (see implementation below). The code calculates
+  // the shift amount from tag_type, right-shifts the constant to move the desired
+  // mask to the LSB position, then extracts it with & 0xFFFF. This branchless
+  // approach is often more performant on modern CPUs.
+#elif defined(__aarch64__) || (defined(__riscv) && (__riscv_xlen == 64))
   constexpr uint64_t kExtractMasksCombined = 0x0000FFFF00FF0000ull;
   return val & static_cast<uint32_t>(
       (kExtractMasksCombined >> (tag_type * 16)) & 0xFFFF);
@@ -1437,6 +1469,11 @@ std::pair<const uint8_t*, ptrdiff_t> DecompressBranchless(
         uint32_t next;
 #if defined(__aarch64__)
         size_t tag_type = AdvanceToNextTagARMOptimized(&ip, &tag);
+        // We never need more than 16 bits. Doing a Load16 allows the compiler
+        // to elide the masking operation in ExtractOffset.
+        next = LittleEndian::Load16(old_ip);
+#elif defined(__riscv)
+        size_t tag_type = AdvanceToNextTagRVOptimized(&ip, &tag);
         // We never need more than 16 bits. Doing a Load16 allows the compiler
         // to elide the masking operation in ExtractOffset.
         next = LittleEndian::Load16(old_ip);
@@ -1811,6 +1848,10 @@ static bool InternalUncompressAllTags(SnappyDecompressor* decompressor,
 bool GetUncompressedLength(Source* source, uint32_t* result) {
   SnappyDecompressor decompressor(source);
   return decompressor.ReadUncompressedLength(result);
+}
+
+size_t Compress(Source* reader, Sink* writer) {
+  return Compress(reader, writer, CompressionOptions{});
 }
 
 size_t Compress(Source* reader, Sink* writer, CompressionOptions options) {
@@ -2320,6 +2361,12 @@ bool IsValidCompressed(Source* compressed) {
 }
 
 void RawCompress(const char* input, size_t input_length, char* compressed,
+                 size_t* compressed_length) {
+  RawCompress(input, input_length, compressed, compressed_length,
+              CompressionOptions{});
+}
+
+void RawCompress(const char* input, size_t input_length, char* compressed,
                  size_t* compressed_length, CompressionOptions options) {
   ByteArraySource reader(input, input_length);
   UncheckedByteArraySink writer(compressed);
@@ -2327,6 +2374,12 @@ void RawCompress(const char* input, size_t input_length, char* compressed,
 
   // Compute how many bytes were added
   *compressed_length = (writer.CurrentDestination() - compressed);
+}
+
+void RawCompressFromIOVec(const struct iovec* iov, size_t uncompressed_length,
+                          char* compressed, size_t* compressed_length) {
+  RawCompressFromIOVec(iov, uncompressed_length, compressed, compressed_length,
+                       CompressionOptions{});
 }
 
 void RawCompressFromIOVec(const struct iovec* iov, size_t uncompressed_length,
@@ -2340,6 +2393,11 @@ void RawCompressFromIOVec(const struct iovec* iov, size_t uncompressed_length,
   *compressed_length = writer.CurrentDestination() - compressed;
 }
 
+size_t Compress(const char* input, size_t input_length,
+                std::string* compressed) {
+  return Compress(input, input_length, compressed, CompressionOptions{});
+}
+
 size_t Compress(const char* input, size_t input_length, std::string* compressed,
                 CompressionOptions options) {
   // Pre-grow the buffer to the max length of the compressed output
@@ -2350,6 +2408,11 @@ size_t Compress(const char* input, size_t input_length, std::string* compressed,
               &compressed_length, options);
   compressed->erase(compressed_length);
   return compressed_length;
+}
+
+size_t CompressFromIOVec(const struct iovec* iov, size_t iov_cnt,
+                         std::string* compressed) {
+  return CompressFromIOVec(iov, iov_cnt, compressed, CompressionOptions{});
 }
 
 size_t CompressFromIOVec(const struct iovec* iov, size_t iov_cnt,
