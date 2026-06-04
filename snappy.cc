@@ -194,6 +194,11 @@ inline uint16_t* TableEntry8ByteMatch(uint16_t* table, uint64_t bytes,
 }  // namespace
 
 size_t MaxCompressedLength(size_t source_bytes) {
+  // Avoid integer overflow that could cause undersized buffer allocations.
+  // Return SIZE_MAX to force a controlled allocation failure.
+  if (source_bytes > (SIZE_MAX - 32) / 7 * 6) {
+    return SIZE_MAX;
+  }
   // Compressed data can be defined as:
   //    compressed := item* literal*
   //    item       := literal* copy
